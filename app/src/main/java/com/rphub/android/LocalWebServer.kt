@@ -47,7 +47,7 @@ class LocalWebServer(port: Int, private val webRoot: File) : NanoHTTPD(port) {
         } catch (e: Exception) {
             Log.e(TAG, "服务请求失败: $uri", e)
             return newFixedLengthResponse(
-                Response.Status.INTERNAL_SERVER_ERROR,
+                Response.Status.INTERNAL_ERROR,
                 "text/plain",
                 "500 Internal Server Error"
             )
@@ -61,7 +61,7 @@ class LocalWebServer(port: Int, private val webRoot: File) : NanoHTTPD(port) {
         } catch (e: IOException) {
             Log.e(TAG, "读取文件失败: ${file.name}", e)
             newFixedLengthResponse(
-                Response.Status.INTERNAL_SERVER_ERROR,
+                Response.Status.INTERNAL_ERROR,
                 "text/plain",
                 "500 Internal Server Error"
             )
