@@ -22,9 +22,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
-/**
- * RP-Hub Android WebView 套壳应用
- */
 class MainActivity : Activity() {
 
     companion object {
@@ -33,7 +30,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 4
+        private const val CURRENT_ASSET_VERSION = 5
     }
 
     private lateinit var webView: WebView
@@ -44,29 +41,24 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 隐藏标题栏
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        // ★ 关键：在 setContentView 之前设置沉浸式
-        // 让内容延伸到状态栏和导航栏后面
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            )
-        }
+        // ★ 关键修复：用 FLAG_FULLSCREEN 让窗口真正全屏
+        // 这样 WebView 的 100vh 就等于整个屏幕高度，不会留黑边
+        // 不用 setDecorFitsSystemWindows(false)，因为那个只让内容画到系统栏后面
+        // 但不改变 viewport 高度，导致 100vh < 实际屏幕高度
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
 
-        // ★ 设置 window 背景为白色，防止黑边
-        window.decorView.setBackgroundColor(Color.WHITE)
+        // 背景设为 RP-Hub 的底色，即使有间隙也是同色
+        window.decorView.setBackgroundColor(Color.parseColor("#F9FAFB"))
 
-        // 创建 WebView，用 FrameLayout 确保填满整个屏幕
+        // 创建 WebView 全屏
         webView = WebView(this)
-        webView.setBackgroundColor(Color.WHITE)
+        webView.setBackgroundColor(Color.parseColor("#F9FAFB"))
         val layout = FrameLayout(this)
+        layout.setBackgroundColor(Color.parseColor("#F9FAFB"))
         val params = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -74,10 +66,8 @@ class MainActivity : Activity() {
         layout.addView(webView, params)
         setContentView(layout)
 
-        // 应用沉浸式全屏（隐藏系统栏）
         applyImmersiveMode()
 
-        // WebView 配置
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -86,41 +76,29 @@ class MainActivity : Activity() {
         settings.allowContentAccess = true
         settings.mediaPlaybackRequiresUserGesture = false
 
-        // 视口自适应 — 关闭 wideViewPort 防止桌面布局
+        // 关闭 wideViewPort 防止桌面布局
         settings.useWideViewPort = false
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(false)
         settings.displayZoomControls = false
 
-        // 缓存
         settings.cacheMode = WebSettings.LOAD_DEFAULT
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-
-        // 允许 file:// 域的 JS 访问
         settings.allowFileAccessFromFileURLs = true
         settings.allowUniversalAccessFromFileURLs = true
 
-        // User-Agent — 必须包含 Mobile 标识，否则网站会返回桌面版
+        // Mobile UA
         settings.userAgentString = "Mozilla/5.0 (Linux; Android ${Build.VERSION.RELEASE}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 RP-Hub-App/1.0"
 
-        // 调试模式
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             WebView.setWebContentsDebuggingEnabled(true)
         }
 
         webView.webViewClient = object : WebViewClient() {
-
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
-                if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) {
-                    return false
-                }
-                if (url.startsWith("http://") || url.startsWith("https://")) {
-                    return false
-                }
+                if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) return false
+                if (url.startsWith("http://") || url.startsWith("https://")) return false
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (e: Exception) {
@@ -130,19 +108,34 @@ class MainActivity : Activity() {
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                view.setBackgroundColor(Color.WHITE)
+                view.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 view.setBackgroundColor(Color.TRANSPARENT)
+                // ★ 注入 JS 覆盖 CSS 变量，强制全屏高度
+                view.evaluateJavascript(
+                    """
+                    (function() {
+                        var root = document.documentElement;
+                        root.style.setProperty('--app-visual-height', '100vh', 'important');
+                        root.style.setProperty('--chat-bg-height', '100vh', 'important');
+                        document.body.style.margin = '0';
+                        document.body.style.padding = '0';
+                        document.body.style.height = '100vh';
+                        document.body.style.overflow = 'hidden';
+                        var app = document.getElementById('app');
+                        if (app) {
+                            app.style.height = '100vh';
+                        }
+                    })();
+                    """,
+                    null
+                )
                 applyImmersiveMode()
             }
 
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?
-            ) {
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     if (request?.isForMainFrame == true) {
                         Log.e(TAG, "页面加载失败: ${error?.description}")
@@ -152,54 +145,42 @@ class MainActivity : Activity() {
         }
 
         webView.webChromeClient = WebChromeClient()
-
-        // 准备文件 → 启动本地服务器 → 加载页面
         prepareAndLoad()
     }
 
-    /**
-     * 沉浸式全屏 — 彻底隐藏状态栏和导航栏
-     */
     private fun applyImmersiveMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
+            // API 30+：隐藏状态栏和导航栏
             val controller = window.insetsController
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
                 controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
+            // API 29 以下
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     or View.SYSTEM_UI_FLAG_FULLSCREEN
                     or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             )
-            @Suppress("DEPRECATION")
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            @Suppress("DEPRECATION")
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
         }
+        // FLAG_FULLSCREEN 确保窗口真正全屏
+        @Suppress("DEPRECATION")
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            applyImmersiveMode()
-        }
+        if (hasFocus) applyImmersiveMode()
     }
 
     private fun prepareAndLoad() {
         webRoot = File(filesDir, "rp-hub-web")
-
         if (!webRoot.exists() || needUpdateAssets()) {
             copyAssetsTo(RP_HUB_ASSET_DIR, webRoot)
             markAssetsUpdated()
         }
-
         startLocalServer()
         webView.loadUrl("http://localhost:$SERVER_PORT/index.html")
     }
@@ -211,14 +192,11 @@ class MainActivity : Activity() {
             for (file in files) {
                 val srcPath = "$assetDir/$file"
                 val destFile = File(targetDir, file)
-
                 if (assets.list(srcPath)?.isNotEmpty() == true) {
                     copyAssetsTo(srcPath, destFile)
                 } else {
                     assets.open(srcPath).use { input ->
-                        FileOutputStream(destFile).use { output ->
-                            input.copyTo(output)
-                        }
+                        FileOutputStream(destFile).use { output -> input.copyTo(output) }
                     }
                 }
             }
@@ -229,15 +207,11 @@ class MainActivity : Activity() {
     }
 
     private fun needUpdateAssets(): Boolean {
-        val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-        return prefs.getInt(KEY_ASSET_VERSION, 0) < CURRENT_ASSET_VERSION
+        return getSharedPreferences(PREF_NAME, MODE_PRIVATE).getInt(KEY_ASSET_VERSION, 0) < CURRENT_ASSET_VERSION
     }
 
     private fun markAssetsUpdated() {
-        getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_ASSET_VERSION, CURRENT_ASSET_VERSION)
-            .apply()
+        getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().putInt(KEY_ASSET_VERSION, CURRENT_ASSET_VERSION).apply()
     }
 
     private fun startLocalServer() {
@@ -251,11 +225,7 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
+        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
 
     override fun onResume() {
