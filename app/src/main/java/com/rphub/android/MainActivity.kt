@@ -33,7 +33,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 3
+        private const val CURRENT_ASSET_VERSION = 4
     }
 
     private lateinit var webView: WebView
@@ -86,8 +86,8 @@ class MainActivity : Activity() {
         settings.allowContentAccess = true
         settings.mediaPlaybackRequiresUserGesture = false
 
-        // 视口自适应
-        settings.useWideViewPort = true
+        // 视口自适应 — 关闭 wideViewPort 防止桌面布局
+        settings.useWideViewPort = false
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(false)
         settings.displayZoomControls = false
@@ -100,8 +100,8 @@ class MainActivity : Activity() {
         settings.allowFileAccessFromFileURLs = true
         settings.allowUniversalAccessFromFileURLs = true
 
-        // User-Agent
-        settings.userAgentString = "${settings.userAgentString} RP-Hub-App/1.0"
+        // User-Agent — 必须包含 Mobile 标识，否则网站会返回桌面版
+        settings.userAgentString = "Mozilla/5.0 (Linux; Android ${Build.VERSION.RELEASE}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 RP-Hub-App/1.0"
 
         // 调试模式
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
