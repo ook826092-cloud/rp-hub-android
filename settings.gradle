@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RP-Hub"
-include(":app")
+rootProject.name = 'RP-Hub'
+include ':app'
