@@ -10,7 +10,5 @@
 *.apk
 *.ap_
 *.dex
-*.keystore
-/app/debug.keystore
 .DS_Store
 Thumbs.db

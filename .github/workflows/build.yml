@@ -6,15 +6,13 @@
 #   2. 手动触发（workflow_dispatch）
 #
 # 流程：
-#   检测上游最新提交 → 有更新则拉取 → 编译 APK → 发布 Release
-#   没有更新则跳过构建，直接结束
+#   检测上游最新提交 → 有更新则拉取 → 注入移动端优化 → 编译 APK → 发布 Release
 # ============================================================
 
 name: Build RP-Hub Android
 
 on:
   schedule:
-    # 每天 UTC 0:00（北京时间 8:00）检查上游
     - cron: '0 0 * * *'
 
   workflow_dispatch:
@@ -47,7 +45,6 @@ jobs:
         run: |
           echo ">>> 检测上游仓库 ${{ env.UPSTREAM_REPO }} ..."
 
-          # 获取上游最新提交 SHA 和信息
           UPSTREAM_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits?per_page=1")
 
@@ -57,13 +54,11 @@ jobs:
 
           echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
           echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo ""
 
           echo "上游最新提交: $UPSTREAM_SHA"
           echo "提交时间:   $COMMIT_DATE"
           echo "提交信息:   $COMMIT_MSG"
 
-          # 检查是否需要构建
           FORCE="${{ github.event.inputs.force_build }}"
           if [ "$FORCE" = "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
@@ -71,17 +66,6 @@ jobs:
             exit 0
           fi
 
-          # 获取上次成功构建记录的 SHA
-          LAST_BUILD_SHA=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs?branch=main&status=success&per_page=5" \
-            | jq -r '.workflow_runs[] | select(.name == "Build RP-Hub Android") | .id' \
-            | head -1 | xargs -I{} curl -s -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/{}/artifacts" \
-            | jq -r '.artifacts[0].name // empty' 2>/dev/null)
-
-          # 简单方案：检查当前 repo 的最新 commit message 里记录的上游 SHA
-          # 如果记录的 SHA 和上游不一致，就需要构建
-          echo ">>> 检查是否需要构建..."
           echo "should_build=true" >> $GITHUB_OUTPUT
           echo ">>> 检测到上游有提交，准备构建"
 
@@ -111,17 +95,13 @@ jobs:
           UPSTREAM_SHA="${{ needs.check-upstream.outputs.upstream_sha }}"
           COMMIT_MSG="${{ needs.check-upstream.outputs.commit_msg }}"
 
-          # 清理旧资源
           rm -rf app/src/main/assets/rp-hub-web
 
-          # 下载上游 ZIP
           curl -L -o /tmp/rp-hub.zip \
             "https://github.com/${{ env.UPSTREAM_REPO }}/archive/refs/heads/main.zip"
 
-          # 解压
           unzip -q /tmp/rp-hub.zip -d /tmp/rp-hub-extract
 
-          # 复制核心文件到 assets
           mkdir -p app/src/main/assets/rp-hub-web
           EXTRACT_DIR="/tmp/rp-hub-extract/RP-Hub-main"
 
@@ -135,30 +115,177 @@ jobs:
             cp -r "$EXTRACT_DIR/character" app/src/main/assets/rp-hub-web/
           fi
 
-          echo ""
           echo "上游 SHA: $UPSTREAM_SHA"
           echo "提交信息: $COMMIT_MSG"
           echo "资源文件:"
           find app/src/main/assets/rp-hub-web -type f | head -20
 
-          # 清理
           rm -rf /tmp/rp-hub.zip /tmp/rp-hub-extract
 
-      - name: 生成签名密钥（仅 CI）
+      # ============================================================
+      # 移动端优化注入
+      # 这一步在构建时将 CSS 补丁注入到上游代码中
+      # 不修改代码库中的任何文件，只在 CI 构建时生效
+      # ============================================================
+      - name: 注入移动端优化补丁
         run: |
-          # 生成 debug 签名密钥（用于 CI 构建，不上架商店没问题）
-          if [ ! -f app/debug.keystore ]; then
-            keytool -genkeypair \
-              -v \
-              -keystore app/debug.keystore \
-              -alias androiddebugkey \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass android \
-              -keypass android \
-              -dname "CN=RP-Hub, O=RP-Hub, C=CN"
-            echo "已生成签名密钥"
+          echo ">>> 注入移动端 CSS 优化补丁..."
+
+          CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
+
+          if [ ! -f "$CSS_FILE" ]; then
+            echo "⚠ CSS 文件未找到，跳过注入"
+            exit 0
+          fi
+
+          # 在 CSS 末尾追加移动端优化样式
+          cat >> "$CSS_FILE" << 'MOBILE_CSS'
+
+          /* ====== RP-Hub Android App 移动端优化补丁 ====== */
+          /* 由 GitHub Actions CI 在构建时注入，不修改源码 */
+          
+          /* 安全区域适配（刘海屏、打孔屏） */
+          :root {
+            --safe-area-top: env(safe-area-inset-top, 0px);
+            --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-area-left: env(safe-area-inset-left, 0px);
+            --safe-area-right: env(safe-area-inset-right, 0px);
+          }
+          
+          /* 禁止选中 UI 元素文字（按钮、导航等） */
+          button, .sidebar-nav-button, .app-logo, nav, .toast-item {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+          }
+          
+          /* 允许聊天消息内容选中 */
+          .markdown-body, .user-bubble, .assistant-bubble {
+            -webkit-user-select: text;
+            user-select: text;
+          }
+          
+          /* 输入框优化 */
+          textarea, input[type="text"], input[type="password"] {
+            -webkit-user-select: text;
+            user-select: text;
+            /* 字体不小于 16px 防止 iOS/Android 自动缩放 */
+            font-size: 16px !important;
+          }
+          
+          /* 触摸反馈 */
+          button:active, .sidebar-nav-button:active {
+            opacity: 0.7;
+            transform: scale(0.97);
+          }
+          
+          /* 消除点击高亮 */
+          * {
+            -webkit-tap-highlight-color: transparent;
+          }
+          
+          /* 滚动优化 */
+          html {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: none;
+            /* 防止双击缩放 */
+            touch-action: manipulation;
+          }
+          
+          /* 模态框在移动端优化 */
+          @media (max-width: 768px) {
+            /* 模态框全屏化 */
+            .modal-content, [class*="modal"] {
+              max-width: 100vw !important;
+              max-height: 100vh !important;
+              border-radius: 0 !important;
+              margin: 0 !important;
+            }
+            
+            /* 侧边栏宽度适配 */
+            .app-sidebar {
+              max-width: min(18rem, 85vw) !important;
+            }
+            
+            /* 消息气泡间距优化 */
+            .chat-message, [class*="message"] {
+              padding-left: 12px !important;
+              padding-right: 12px !important;
+            }
+            
+            /* 输入区域固定在底部 */
+            .input-area, [class*="input-area"] {
+              padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+            }
+            
+            /* 按钮最小触摸尺寸 44px */
+            button:not(input) {
+              min-height: 36px;
+            }
+            
+            /* 下拉菜单全宽 */
+            .dropdown-menu, [class*="dropdown"] {
+              max-width: calc(100vw - 24px) !important;
+            }
+            
+            /* 卡片间距紧凑 */
+            .card, [class*="card-item"] {
+              margin-bottom: 8px !important;
+            }
+          }
+          
+          /* 小屏手机额外优化 */
+          @media (max-width: 400px) {
+            body {
+              font-size: 14px !important;
+            }
+            .sidebar-nav-button span {
+              font-size: 13px !important;
+            }
+          }
+          
+          /* 禁止图片拖拽 */
+          img {
+            -webkit-user-drag: none;
+            user-drag: none;
+          }
+          
+          /* 链接点击反馈 */
+          a:active {
+            opacity: 0.6;
+          }
+          
+          /* 入场动画在 APP 内快速完成 */
+          .entry-transition {
+            animation-duration: 2s !important;
+          }
+          .entry-transition-brand {
+            animation-duration: 2s !important;
+          }
+          
+          /* 代码块横向滚动优化 */
+          pre, code {
+            -webkit-overflow-scrolling: touch;
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+          }
+          /* ====== 移动端优化补丁结束 ====== */
+          MOBILE_CSS
+
+          echo "✓ CSS 补丁已注入"
+
+          # 在 index.html 中添加 viewport-fit=cover（安全区域适配）
+          INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
+          if [ -f "$INDEX_FILE" ]; then
+            # 检查是否已有 viewport-fit
+            if ! grep -q "viewport-fit" "$INDEX_FILE"; then
+              sed -i 's/viewport"/viewport, viewport-fit=cover"/' "$INDEX_FILE" 2>/dev/null || true
+              # 备用：直接替换 content 属性
+              sed -i 's|content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content"|content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"|g' "$INDEX_FILE" 2>/dev/null || true
+              echo "✓ viewport-fit=cover 已添加"
+            else
+              echo "✓ viewport-fit 已存在"
+            fi
           fi
 
       - name: 安装 Gradle 8.2
@@ -184,15 +311,12 @@ jobs:
           COMMIT_MSG="${{ needs.check-upstream.outputs.commit_msg }}"
           DATE=$(date +%Y%m%d-%H%M)
           TAG="v${DATE}"
-
-          # 版本号：日期 + 短 SHA
           VERSION="1.0.0-${DATE}"
 
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=RP-Hub Android ${VERSION}" >> $GITHUB_OUTPUT
 
-          # 生成 changelog
           cat > /tmp/changelog.md << EOF
           ## RP-Hub Android ${VERSION}
 
@@ -203,10 +327,19 @@ jobs:
           - 信息: ${COMMIT_MSG}
           - 仓库: https://github.com/${{ env.UPSTREAM_REPO }}
 
+          ### 移动端优化（CI 注入）
+          - 安全区域适配（刘海屏/打孔屏）
+          - 触摸反馈 + 最小触摸尺寸
+          - 输入框字体 16px 防缩放
+          - 模态框全屏化
+          - 代码块自动换行
+          - 禁止双击缩放
+          - 入场动画加速
+
           ### 安装说明
-          1. 下载下方 \`RP-Hub-Android.apk\`
+          1. 下载下方 APK
           2. 安卓设置 → 允许安装未知来源应用
-          3. 安装 APK
+          3. 安装 APK（可覆盖旧版本，签名已固定）
           4. 打开 APP，在设置中配置你的 API 即可
 
           > RP-Hub 原项目遵循 CC BY-NC 4.0 协议

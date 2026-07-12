@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import android.view.WindowManager
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.webkit.*
+import android.widget.FrameLayout
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -31,7 +33,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 2
+        private const val CURRENT_ASSET_VERSION = 3
     }
 
     private lateinit var webView: WebView
@@ -45,11 +47,34 @@ class MainActivity : Activity() {
         // 隐藏标题栏
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        // 创建 WebView（全屏，无布局文件）
-        webView = WebView(this)
-        setContentView(webView)
+        // ★ 关键：在 setContentView 之前设置沉浸式
+        // 让内容延伸到状态栏和导航栏后面
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+        }
 
-        // 应用沉浸式全屏
+        // ★ 设置 window 背景为白色，防止黑边
+        window.decorView.setBackgroundColor(Color.WHITE)
+
+        // 创建 WebView，用 FrameLayout 确保填满整个屏幕
+        webView = WebView(this)
+        webView.setBackgroundColor(Color.WHITE)
+        val layout = FrameLayout(this)
+        val params = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        layout.addView(webView, params)
+        setContentView(layout)
+
+        // 应用沉浸式全屏（隐藏系统栏）
         applyImmersiveMode()
 
         // WebView 配置
@@ -105,12 +130,11 @@ class MainActivity : Activity() {
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                view.setBackgroundColor(0xFFF9FAFB.toInt())
+                view.setBackgroundColor(Color.WHITE)
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                view.setBackgroundColor(0x00000000)
-                // 页面加载完成后重新应用沉浸式
+                view.setBackgroundColor(Color.TRANSPARENT)
                 applyImmersiveMode()
             }
 
@@ -135,13 +159,9 @@ class MainActivity : Activity() {
 
     /**
      * 沉浸式全屏 — 彻底隐藏状态栏和导航栏
-     *
-     * Android 11+ (API 30+): 使用 WindowInsetsController
-     * Android 11 以下: 使用 SYSTEM_UI_FLAG 标志位
      */
     private fun applyImmersiveMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // API 30+ — 使用 WindowInsetsController
             window.setDecorFitsSystemWindows(false)
             val controller = window.insetsController
             if (controller != null) {
@@ -149,7 +169,6 @@ class MainActivity : Activity() {
                 controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
-            // API 29 以下 — 使用旧 API
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -166,10 +185,6 @@ class MainActivity : Activity() {
         }
     }
 
-    /**
-     * 窗口焦点变化时重新应用沉浸式
-     * 用户从其他 APP 切回来时，系统栏会重新出现，这里把它再藏掉
-     */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
@@ -177,9 +192,6 @@ class MainActivity : Activity() {
         }
     }
 
-    /**
-     * 准备 RP-Hub 文件并启动本地服务器
-     */
     private fun prepareAndLoad() {
         webRoot = File(filesDir, "rp-hub-web")
 
