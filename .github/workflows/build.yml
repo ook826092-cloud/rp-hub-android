@@ -161,24 +161,16 @@ jobs:
             echo "已生成签名密钥"
           fi
 
-      - name: 生成 Gradle Wrapper
+      - name: 安装 Gradle 8.2
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
-
-      - name: 缓存 Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          validate-wrappers: false
 
       - name: 构建 Release APK
         run: |
           echo ">>> 开始构建..."
-          ./gradlew assembleRelease --no-daemon
+          gradle assembleRelease --no-daemon
 
           echo ""
           echo ">>> 构建产物:"
