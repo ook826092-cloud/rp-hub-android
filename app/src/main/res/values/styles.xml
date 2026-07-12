@@ -3,7 +3,6 @@
     <style name="Theme.RPHub" parent="android:Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@android:color/white</item>
     </style>
 </resources>

@@ -13,10 +13,7 @@ import android.util.Log
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.webkit.*
-import android.widget.FrameLayout
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -30,7 +27,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 7
+        private const val CURRENT_ASSET_VERSION = 8
     }
 
     private lateinit var webView: WebView
@@ -43,18 +40,33 @@ class MainActivity : Activity() {
 
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        // 全屏 flags
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        // ★ 核心修复：不隐藏状态栏，而是让状态栏透明 + 内容延伸到状态栏后面
+        // 之前用 FLAG_FULLSCREEN 隐藏状态栏，但 WebView 不填满那个区域 → 黑额头
+        // 现在让状态栏透明可见，内容画到它后面，底部导航栏同理
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30+：内容延伸到系统栏后面
+            window.setDecorFitsSystemWindows(false)
+        } else {
+            // API 29 以下
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+        }
 
-        // 背景白色
-        window.decorView.setBackgroundColor(Color.WHITE)
+        // 状态栏和导航栏透明
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
+        // 背景设为 RP-Hub 底色
+        window.decorView.setBackgroundColor(Color.parseColor("#F9FAFB"))
 
         // WebView 全屏
         webView = WebView(this)
-        webView.setBackgroundColor(Color.WHITE)
+        webView.setBackgroundColor(Color.parseColor("#F9FAFB"))
         setContentView(webView)
-
-        applyImmersiveMode()
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
@@ -69,8 +81,6 @@ class MainActivity : Activity() {
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(false)
         settings.displayZoomControls = false
-
-        // 文字大小不自动调整
         settings.textZoom = 100
 
         settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -95,12 +105,11 @@ class MainActivity : Activity() {
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                view.setBackgroundColor(Color.WHITE)
+                view.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 view.setBackgroundColor(Color.TRANSPARENT)
-                applyImmersiveMode()
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -112,30 +121,6 @@ class MainActivity : Activity() {
 
         webView.webChromeClient = WebChromeClient()
         prepareAndLoad()
-    }
-
-    private fun applyImmersiveMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val controller = window.insetsController
-            if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            )
-        }
-        @Suppress("DEPRECATION")
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyImmersiveMode()
     }
 
     private fun prepareAndLoad() {
@@ -188,7 +173,6 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         webView.onResume()
-        applyImmersiveMode()
     }
 
     override fun onPause() { webView.onPause(); super.onPause() }
