@@ -1,7 +1,7 @@
 /* ====== RP-Hub Android App 移动端优化补丁 ====== */
 /* 由 GitHub Actions CI 在构建时注入，不修改源码 */
 
-/* 强制全屏填充，消除黑额头 */
+/* 强制全屏填充 */
 html, body, #app {
   margin: 0 !important;
   padding: 0 !important;
@@ -11,43 +11,51 @@ html, body, #app {
   background: #f9fafb !important;
 }
 
-/* 安全区域适配 */
-:root {
-  --safe-area-top: env(safe-area-inset-top, 0px);
-  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-area-left: env(safe-area-inset-left, 0px);
-  --safe-area-right: env(safe-area-inset-right, 0px);
+/* 防止文字大小自动调整 */
+html {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
 }
 
-/* 禁止选中 UI 元素文字 */
-button, .sidebar-nav-button, .app-logo, nav, .toast-item {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-/* 允许聊天消息内容选中 */
-.markdown-body, .user-bubble, .assistant-bubble {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* 输入框优化 */
-textarea, input[type="text"], input[type="password"] {
-  -webkit-user-select: text;
-  user-select: text;
-  font-size: 16px !important;
-}
-
-/* 触摸反馈 */
-button:active, .sidebar-nav-button:active {
-  opacity: 0.7;
-  transform: scale(0.97);
+/* 字体渲染优化 */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* 消除点击高亮 */
 * {
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* 禁止 UI 元素选中 */
+button, .sidebar-nav-button, .app-logo, nav, .toast-item,
+.app-sidebar, .input-area, .input-island {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* 允许消息内容选中 */
+.markdown-body, .user-bubble, .assistant-bubble, .chat-message {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* 输入框优化 */
+textarea, input[type="text"], input[type="password"], input[type="search"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  font-size: 16px !important;
+}
+
+/* 触摸反馈 */
+button:active, .sidebar-nav-button:active, .chat-message:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+  transition: all 0.1s ease;
 }
 
 /* 滚动优化 */
@@ -57,68 +65,90 @@ html {
   touch-action: manipulation;
 }
 
-/* 移动端优化 */
-@media (max-width: 768px) {
-  .modal-content, [class*="modal"] {
-    max-width: 100vw !important;
-    max-height: 100vh !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
-  }
-  .app-sidebar {
-    max-width: min(18rem, 85vw) !important;
-  }
-  .chat-message, [class*="message"] {
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-  }
-  .input-area, [class*="input-area"] {
-    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-  }
-  button:not(input) {
-    min-height: 36px;
-  }
-  .dropdown-menu, [class*="dropdown"] {
-    max-width: calc(100vw - 24px) !important;
-  }
-  .card, [class*="card-item"] {
-    margin-bottom: 8px !important;
-  }
-}
-
-/* 小屏手机额外优化 */
-@media (max-width: 400px) {
-  body {
-    font-size: 14px !important;
-  }
-  .sidebar-nav-button span {
-    font-size: 13px !important;
-  }
-}
-
 /* 禁止图片拖拽 */
 img {
   -webkit-user-drag: none;
   user-drag: none;
+  max-width: 100%;
+  height: auto;
 }
 
 /* 链接点击反馈 */
-a:active {
-  opacity: 0.6;
-}
-
-/* 入场动画在 APP 内快速完成 */
-.entry-transition {
-  animation-duration: 2s !important;
-}
-.entry-transition-brand {
-  animation-duration: 2s !important;
-}
+a:active { opacity: 0.6; }
 
 /* 代码块自动换行 */
 pre, code {
   -webkit-overflow-scrolling: touch;
   white-space: pre-wrap !important;
   word-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
+/* 选中文本颜色 */
+::selection {
+  background: rgba(37, 99, 235, 0.25) !important;
+}
+::-moz-selection {
+  background: rgba(37, 99, 235, 0.25) !important;
+}
+
+/* 入场动画加速 */
+.entry-transition { animation-duration: 1.5s !important; }
+.entry-transition-brand { animation-duration: 1.5s !important; }
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  /* 模态框全屏 */
+  .modal-content, [class*="modal"] {
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+  /* 侧边栏 */
+  .app-sidebar {
+    max-width: min(18rem, 85vw) !important;
+  }
+  /* 消息间距 */
+  .chat-message, [class*="message"] {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  /* 输入区底部安全距离 */
+  .input-area, [class*="input-area"] {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+  /* 按钮触摸尺寸 */
+  button:not(input) { min-height: 36px; }
+  /* 下拉菜单 */
+  .dropdown-menu, [class*="dropdown"] {
+    max-width: calc(100vw - 24px) !important;
+  }
+  /* 卡片间距 */
+  .card, [class*="card-item"] {
+    margin-bottom: 8px !important;
+  }
+}
+
+/* 小屏手机 */
+@media (max-width: 400px) {
+  body { font-size: 14px !important; }
+  .sidebar-nav-button span { font-size: 13px !important; }
+}
+
+/* 平滑滚动 */
+* { scroll-behavior: smooth; }
+
+/* 隐藏滚动条 */
+::-webkit-scrollbar { display: none !important; width: 0 !important; }
+* { scrollbar-width: none !important; }
+
+/* 焦点样式 */
+*:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.5) !important;
+  outline-offset: 2px;
+}
+input:focus, textarea:focus {
+  outline: none !important;
 }
 /* ====== 移动端优化补丁结束 ====== */
