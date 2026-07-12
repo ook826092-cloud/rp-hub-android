@@ -12,6 +12,15 @@
 name: Build RP-Hub Android
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build.yml'
+      - 'app/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+
   schedule:
     - cron: '0 0 * * *'
 
@@ -20,7 +29,7 @@ on:
       force_build:
         description: '强制构建（即使上游无更新）'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
         options:
           - 'false'
