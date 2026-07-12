@@ -138,165 +138,34 @@ jobs:
       # ============================================================
       - name: 注入移动端优化补丁
         run: |
-          echo ">>> 注入移动端 CSS 优化补丁..."
+          echo "注入移动端 CSS 优化补丁..."
 
           CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
+          PATCH_FILE="mobile-patch.css"
 
           if [ ! -f "$CSS_FILE" ]; then
             echo "CSS 文件未找到，跳过注入"
             exit 0
           fi
 
-          # 在 CSS 末尾追加移动端优化样式（无前导空格）
-          cat >> "$CSS_FILE" << 'MOBILE_CSS'
-/* ====== RP-Hub Android App 移动端优化补丁 ====== */
-/* 由 GitHub Actions CI 在构建时注入，不修改源码 */
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "补丁文件未找到，跳过注入"
+            exit 0
+          fi
 
-/* 强制全屏填充，消除黑额头 */
-html, body, #app {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  overflow: hidden !important;
-  background: #f9fafb !important;
-}
+          # 追加移动端优化样式
+          cat "$PATCH_FILE" >> "$CSS_FILE"
+          echo "CSS 补丁已注入 ($(wc -l < $PATCH_FILE) 行)"
 
-/* 安全区域适配 */
-:root {
-  --safe-area-top: env(safe-area-inset-top, 0px);
-  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-area-left: env(safe-area-inset-left, 0px);
-  --safe-area-right: env(safe-area-inset-right, 0px);
-}
-
-/* 禁止选中 UI 元素文字 */
-button, .sidebar-nav-button, .app-logo, nav, .toast-item {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-/* 允许聊天消息内容选中 */
-.markdown-body, .user-bubble, .assistant-bubble {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* 输入框优化 */
-textarea, input[type="text"], input[type="password"] {
-  -webkit-user-select: text;
-  user-select: text;
-  font-size: 16px !important;
-}
-
-/* 触摸反馈 */
-button:active, .sidebar-nav-button:active {
-  opacity: 0.7;
-  transform: scale(0.97);
-}
-
-/* 消除点击高亮 */
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* 滚动优化 */
-html {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: none;
-  touch-action: manipulation;
-}
-
-/* 移动端优化 */
-@media (max-width: 768px) {
-  /* 模态框全屏化 */
-  .modal-content, [class*="modal"] {
-    max-width: 100vw !important;
-    max-height: 100vh !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
-  }
-  /* 侧边栏宽度适配 */
-  .app-sidebar {
-    max-width: min(18rem, 85vw) !important;
-  }
-  /* 消息气泡间距优化 */
-  .chat-message, [class*="message"] {
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-  }
-  /* 输入区域底部安全距离 */
-  .input-area, [class*="input-area"] {
-    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-  }
-  /* 按钮最小触摸尺寸 */
-  button:not(input) {
-    min-height: 36px;
-  }
-  /* 下拉菜单全宽 */
-  .dropdown-menu, [class*="dropdown"] {
-    max-width: calc(100vw - 24px) !important;
-  }
-  /* 卡片间距紧凑 */
-  .card, [class*="card-item"] {
-    margin-bottom: 8px !important;
-  }
-}
-
-/* 小屏手机额外优化 */
-@media (max-width: 400px) {
-  body {
-    font-size: 14px !important;
-  }
-  .sidebar-nav-button span {
-    font-size: 13px !important;
-  }
-}
-
-/* 禁止图片拖拽 */
-img {
-  -webkit-user-drag: none;
-  user-drag: none;
-}
-
-/* 链接点击反馈 */
-a:active {
-  opacity: 0.6;
-}
-
-/* 入场动画在 APP 内快速完成 */
-.entry-transition {
-  animation-duration: 2s !important;
-}
-.entry-transition-brand {
-  animation-duration: 2s !important;
-}
-
-/* 代码块自动换行 */
-pre, code {
-  -webkit-overflow-scrolling: touch;
-  white-space: pre-wrap !important;
-  word-wrap: break-word !important;
-}
-/* ====== 移动端优化补丁结束 ====== */
-MOBILE_CSS
-
-          echo "CSS 补丁已注入"
-
-          # 在 index.html 中确保 viewport 正确（含 viewport-fit=cover）
+          # 用 Python 精确替换 viewport meta
           INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
           if [ -f "$INDEX_FILE" ]; then
-            # 用 Python 精确替换 viewport meta
             python3 -c "
           import re
           with open('$INDEX_FILE', 'r', encoding='utf-8') as f:
               html = f.read()
-
-          # 替换 viewport meta 标签
           new_viewport = '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content\">'
           html = re.sub(r'<meta name=\"viewport\"[^>]*>', new_viewport, html)
-
           with open('$INDEX_FILE', 'w', encoding='utf-8') as f:
               f.write(html)
           print('viewport 已更新')
