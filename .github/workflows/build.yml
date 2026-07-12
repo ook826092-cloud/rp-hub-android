@@ -143,29 +143,34 @@ jobs:
           INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
           CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
 
-          # 1. 注入 JS 修复脚本（在 app.js 之前加载）
+          # 1. 注入 JS 修复脚本 + viewport + theme-color
           if [ -f "mobile-fix.js" ] && [ -f "$INDEX_FILE" ]; then
-            python3 -c "
+            python3 << 'PYEOF'
           import re
-          with open('$INDEX_FILE', 'r', encoding='utf-8') as f:
+
+          with open("app/src/main/assets/rp-hub-web/index.html", "r", encoding="utf-8") as f:
               html = f.read()
 
-          # 读取修复脚本内容
-          with open('mobile-fix.js', 'r', encoding='utf-8') as f:
+          # 读取修复脚本
+          with open("mobile-fix.js", "r", encoding="utf-8") as f:
               fix_script = f.read()
 
-          # 在 </head> 前注入修复脚本（在所有其他脚本之前）
-          inject = '<script>' + fix_script + '</script>'
-          html = html.replace('</head>', inject + '</head>', 1)
+          # 在 </head> 前注入修复脚本
+          inject = "<script>" + fix_script + "</script>"
+          html = html.replace("</head>", inject + "\n</head>", 1)
 
-          # 替换 viewport meta
-          new_viewport = '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content\">'
-          html = re.sub(r'<meta name=\"viewport\"[^>]*>', new_viewport, html)
+          # 替换 viewport meta（加 viewport-fit=cover）
+          new_viewport = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">'
+          html = re.sub(r'<meta name="viewport"[^>]*>', new_viewport, html)
 
-          with open('$INDEX_FILE', 'w', encoding='utf-8') as f:
+          # 添加 theme-color meta（状态栏颜色）
+          if "theme-color" not in html:
+              html = html.replace("</head>", '<meta name="theme-color" content="#f9fafb">\n</head>', 1)
+
+          with open("app/src/main/assets/rp-hub-web/index.html", "w", encoding="utf-8") as f:
               f.write(html)
-          print('JS 修复脚本 + viewport 已注入')
-          "
+          print("JS + viewport + theme-color 已注入")
+          PYEOF
           else
             echo "修复脚本或 index.html 未找到"
           fi
