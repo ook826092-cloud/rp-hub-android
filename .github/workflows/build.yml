@@ -138,38 +138,42 @@ jobs:
       # ============================================================
       - name: 注入移动端优化补丁
         run: |
-          echo "注入移动端 CSS 优化补丁..."
+          echo "注入移动端优化补丁..."
 
-          CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
-          PATCH_FILE="mobile-patch.css"
-
-          if [ ! -f "$CSS_FILE" ]; then
-            echo "CSS 文件未找到，跳过注入"
-            exit 0
-          fi
-
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "补丁文件未找到，跳过注入"
-            exit 0
-          fi
-
-          # 追加移动端优化样式
-          cat "$PATCH_FILE" >> "$CSS_FILE"
-          echo "CSS 补丁已注入 ($(wc -l < $PATCH_FILE) 行)"
-
-          # 用 Python 精确替换 viewport meta
           INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
-          if [ -f "$INDEX_FILE" ]; then
+          CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
+
+          # 1. 注入 JS 修复脚本（在 app.js 之前加载）
+          if [ -f "mobile-fix.js" ] && [ -f "$INDEX_FILE" ]; then
             python3 -c "
           import re
           with open('$INDEX_FILE', 'r', encoding='utf-8') as f:
               html = f.read()
+
+          # 读取修复脚本内容
+          with open('mobile-fix.js', 'r', encoding='utf-8') as f:
+              fix_script = f.read()
+
+          # 在 </head> 前注入修复脚本（在所有其他脚本之前）
+          inject = '<script>' + fix_script + '</script>'
+          html = html.replace('</head>', inject + '</head>', 1)
+
+          # 替换 viewport meta
           new_viewport = '<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content\">'
           html = re.sub(r'<meta name=\"viewport\"[^>]*>', new_viewport, html)
+
           with open('$INDEX_FILE', 'w', encoding='utf-8') as f:
               f.write(html)
-          print('viewport 已更新')
+          print('JS 修复脚本 + viewport 已注入')
           "
+          else
+            echo "修复脚本或 index.html 未找到"
+          fi
+
+          # 2. 追加 CSS 优化
+          if [ -f "mobile-patch.css" ] && [ -f "$CSS_FILE" ]; then
+            cat mobile-patch.css >> "$CSS_FILE"
+            echo "CSS 补丁已注入 ($(wc -l < mobile-patch.css) 行)"
           fi
 
       - name: 安装 Gradle 8.2
