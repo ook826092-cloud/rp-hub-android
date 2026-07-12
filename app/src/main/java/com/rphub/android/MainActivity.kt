@@ -8,9 +8,12 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.webkit.*
 import android.widget.Toast
 import java.io.File
@@ -19,13 +22,6 @@ import java.io.IOException
 
 /**
  * RP-Hub Android WebView 套壳应用
- * 
- * 架构说明：
- * 1. 首次启动时，将打包在 APK assets 中的 RP-Hub 文件复制到 app 私有目录
- * 2. 使用 Android 内置的 NanoHTTPD 风格的 LocalServer 提供本地 HTTP 服务
- * 3. WebView 通过 http://localhost:8080 访问 RP-Hub
- * 
- * 这样彻底解决了 content:// 和 file:// 协议下的各种限制问题。
  */
 class MainActivity : Activity() {
 
@@ -35,7 +31,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 1
+        private const val CURRENT_ASSET_VERSION = 2
     }
 
     private lateinit var webView: WebView
@@ -46,22 +42,21 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 隐藏标题栏 + 沉浸式全屏
+        // 隐藏标题栏
         requestWindowFeature(Window.FEATURE_NO_TITLE)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
 
         // 创建 WebView（全屏，无布局文件）
         webView = WebView(this)
         setContentView(webView)
 
+        // 应用沉浸式全屏
+        applyImmersiveMode()
+
         // WebView 配置
         val settings = webView.settings
         settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true           // RP-Hub 使用 localStorage
-        settings.databaseEnabled = true                // IndexedDB 支持
+        settings.domStorageEnabled = true
+        settings.databaseEnabled = true
         settings.allowFileAccess = true
         settings.allowContentAccess = true
         settings.mediaPlaybackRequiresUserGesture = false
@@ -72,7 +67,7 @@ class MainActivity : Activity() {
         settings.setSupportZoom(false)
         settings.displayZoomControls = false
 
-        // 缓存 — 支持离线
+        // 缓存
         settings.cacheMode = WebSettings.LOAD_DEFAULT
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
@@ -83,7 +78,7 @@ class MainActivity : Activity() {
         // User-Agent
         settings.userAgentString = "${settings.userAgentString} RP-Hub-App/1.0"
 
-        // 调试模式（仅 Debug 构建）
+        // 调试模式
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             WebView.setWebContentsDebuggingEnabled(true)
         }
@@ -96,12 +91,11 @@ class MainActivity : Activity() {
             ): Boolean {
                 val url = request.url.toString()
                 if (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1")) {
-                    return false // 本地资源，WebView 自己处理
+                    return false
                 }
                 if (url.startsWith("http://") || url.startsWith("https://")) {
-                    return false // 外部链接也在 WebView 中打开
+                    return false
                 }
-                // 非链接（如 tel:, mailto:）交给系统
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (e: Exception) {
@@ -116,6 +110,8 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 view.setBackgroundColor(0x00000000)
+                // 页面加载完成后重新应用沉浸式
+                applyImmersiveMode()
             }
 
             override fun onReceivedError(
@@ -125,7 +121,7 @@ class MainActivity : Activity() {
             ) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     if (request?.isForMainFrame == true) {
-                        android.util.Log.e(TAG, "页面加载失败: ${error?.description}", error?.description as? Throwable)
+                        Log.e(TAG, "页面加载失败: ${error?.description}")
                     }
                 }
             }
@@ -138,27 +134,64 @@ class MainActivity : Activity() {
     }
 
     /**
+     * 沉浸式全屏 — 彻底隐藏状态栏和导航栏
+     *
+     * Android 11+ (API 30+): 使用 WindowInsetsController
+     * Android 11 以下: 使用 SYSTEM_UI_FLAG 标志位
+     */
+    private fun applyImmersiveMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30+ — 使用 WindowInsetsController
+            window.setDecorFitsSystemWindows(false)
+            val controller = window.insetsController
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            // API 29 以下 — 使用旧 API
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            )
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            @Suppress("DEPRECATION")
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+        }
+    }
+
+    /**
+     * 窗口焦点变化时重新应用沉浸式
+     * 用户从其他 APP 切回来时，系统栏会重新出现，这里把它再藏掉
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyImmersiveMode()
+        }
+    }
+
+    /**
      * 准备 RP-Hub 文件并启动本地服务器
      */
     private fun prepareAndLoad() {
         webRoot = File(filesDir, "rp-hub-web")
 
-        // 首次启动：从 assets 复制文件到 app 私有目录
         if (!webRoot.exists() || needUpdateAssets()) {
             copyAssetsTo(RP_HUB_ASSET_DIR, webRoot)
             markAssetsUpdated()
         }
 
-        // 启动本地 HTTP 服务器
         startLocalServer()
-
-        // 加载 RP-Hub
         webView.loadUrl("http://localhost:$SERVER_PORT/index.html")
     }
 
-    /**
-     * 将 APK assets 目录中的文件递归复制到目标目录
-     */
     private fun copyAssetsTo(assetDir: String, targetDir: File) {
         targetDir.mkdirs()
         try {
@@ -168,10 +201,8 @@ class MainActivity : Activity() {
                 val destFile = File(targetDir, file)
 
                 if (assets.list(srcPath)?.isNotEmpty() == true) {
-                    // 子目录，递归
                     copyAssetsTo(srcPath, destFile)
                 } else {
-                    // 文件，复制
                     assets.open(srcPath).use { input ->
                         FileOutputStream(destFile).use { output ->
                             input.copyTo(output)
@@ -180,7 +211,7 @@ class MainActivity : Activity() {
                 }
             }
         } catch (e: IOException) {
-            android.util.Log.e(TAG, "复制 assets 失败", e)
+            Log.e(TAG, "复制 assets 失败", e)
             Toast.makeText(this, "初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
@@ -197,17 +228,12 @@ class MainActivity : Activity() {
             .apply()
     }
 
-    /**
-     * 启动本地 HTTP 服务器
-     * 使用 NanoHTTPD 库来提供文件服务
-     */
     private fun startLocalServer() {
         localServer = LocalWebServer(SERVER_PORT, webRoot)
         try {
             localServer?.start()
         } catch (e: IOException) {
-            android.util.Log.e(TAG, "本地服务器启动失败", e)
-            // 如果启动失败，降级为直接用 file:// 加载
+            Log.e(TAG, "本地服务器启动失败", e)
             webView.loadUrl("file://${webRoot.absolutePath}/index.html")
         }
     }
@@ -223,6 +249,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        applyImmersiveMode()
     }
 
     override fun onPause() {
