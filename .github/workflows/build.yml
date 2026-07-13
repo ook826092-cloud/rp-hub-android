@@ -1,14 +1,3 @@
-# ============================================================
-# RP-Hub Android 自动构建 & 发布 Workflow
-#
-# 触发条件：
-#   1. 每天零点（UTC）自动检查上游仓库是否有新提交
-#   2. 手动触发（workflow_dispatch）
-#
-# 流程：
-#   检测上游最新提交 → 有更新则拉取 → 注入移动端优化 → 编译 APK → 发布 Release
-# ============================================================
-
 name: Build RP-Hub Android
 
 on:
@@ -21,169 +10,29 @@ on:
       - 'build.gradle'
       - 'settings.gradle'
 
-  schedule:
-    - cron: '0 0 * * *'
-
   workflow_dispatch:
-    inputs:
-      force_build:
-        description: '强制构建（即使上游无更新）'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
 
 env:
-  UPSTREAM_REPO: STA1N156/RP-Hub
   JAVA_VERSION: '17'
 
 jobs:
-  check-upstream:
-    name: 检测上游更新
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
-      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
-      commit_msg: ${{ steps.check.outputs.commit_msg }}
-
-    steps:
-      - name: 检查上游最新提交
-        id: check
-        run: |
-          echo ">>> 检测上游仓库 ${{ env.UPSTREAM_REPO }} ..."
-
-          UPSTREAM_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits?per_page=1")
-
-          UPSTREAM_SHA=$(echo "$UPSTREAM_INFO" | jq -r '.[0].sha')
-          COMMIT_DATE=$(echo "$UPSTREAM_INFO" | jq -r '.[0].commit.committer.date')
-          COMMIT_MSG=$(echo "$UPSTREAM_INFO" | jq -r '.[0].commit.message' | head -1)
-
-          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
-
-          echo "上游最新提交: $UPSTREAM_SHA"
-          echo "提交时间:   $COMMIT_DATE"
-          echo "提交信息:   $COMMIT_MSG"
-
-          FORCE="${{ github.event.inputs.force_build }}"
-          if [ "$FORCE" = "true" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo ">>> 手动强制构建"
-            exit 0
-          fi
-
-          echo "should_build=true" >> $GITHUB_OUTPUT
-          echo ">>> 检测到上游有提交，准备构建"
-
   build-apk:
     name: 构建 APK
-    needs: check-upstream
-    if: needs.check-upstream.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout 本仓库
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 设置 JDK ${{ env.JAVA_VERSION }}
+      - name: 设置 JDK
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
-      - name: 拉取上游 RP-Hub 前端文件
-        run: |
-          echo ">>> 从上游拉取最新 RP-Hub 前端..."
-          UPSTREAM_SHA="${{ needs.check-upstream.outputs.upstream_sha }}"
-          COMMIT_MSG="${{ needs.check-upstream.outputs.commit_msg }}"
-
-          rm -rf app/src/main/assets/rp-hub-web
-
-          curl -L -o /tmp/rp-hub.zip \
-            "https://github.com/${{ env.UPSTREAM_REPO }}/archive/refs/heads/main.zip"
-
-          unzip -q /tmp/rp-hub.zip -d /tmp/rp-hub-extract
-
-          mkdir -p app/src/main/assets/rp-hub-web
-          EXTRACT_DIR="/tmp/rp-hub-extract/RP-Hub-main"
-
-          cp "$EXTRACT_DIR/index.html" app/src/main/assets/rp-hub-web/
-
-          if [ -d "$EXTRACT_DIR/assets" ]; then
-            cp -r "$EXTRACT_DIR/assets" app/src/main/assets/rp-hub-web/
-          fi
-
-          if [ -d "$EXTRACT_DIR/character" ]; then
-            cp -r "$EXTRACT_DIR/character" app/src/main/assets/rp-hub-web/
-          fi
-
-          echo "上游 SHA: $UPSTREAM_SHA"
-          echo "提交信息: $COMMIT_MSG"
-          echo "资源文件:"
-          find app/src/main/assets/rp-hub-web -type f | head -20
-
-          rm -rf /tmp/rp-hub.zip /tmp/rp-hub-extract
-
-      # ============================================================
-      # 移动端优化注入
-      # 这一步在构建时将 CSS 补丁注入到上游代码中
-      # 不修改代码库中的任何文件，只在 CI 构建时生效
-      # ============================================================
-      - name: 注入移动端优化补丁
-        run: |
-          echo "注入移动端优化补丁..."
-
-          INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
-          CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
-          JS_FILE="app/src/main/assets/rp-hub-web/assets/js/mobile-fix.js"
-
-          # 1. 修改 viewport + theme-color + 注入 JS
-          if [ -f "$INDEX_FILE" ]; then
-            python3 << 'PYEOF'
-          import re
-
-          with open("app/src/main/assets/rp-hub-web/index.html", "r", encoding="utf-8") as f:
-              html = f.read()
-
-          # 替换 viewport meta（加 viewport-fit=cover）
-          new_viewport = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">'
-          html = re.sub(r'<meta name="viewport"[^>]*>', new_viewport, html)
-
-          # 添加 theme-color meta
-          if "theme-color" not in html:
-              html = html.replace("</head>", '<meta name="theme-color" content="#f9fafb">\n</head>', 1)
-
-          # 注入 mobile-fix.js（在 app.js 之前加载）
-          if 'mobile-fix.js' not in html:
-              html = html.replace('</head>', '<script src="assets/js/mobile-fix.js"></script>\n</head>', 1)
-
-          with open("app/src/main/assets/rp-hub-web/index.html", "w", encoding="utf-8") as f:
-              f.write(html)
-          print("viewport + theme-color + JS 已注入")
-          PYEOF
-          fi
-
-          # 2. 复制 JS 修复脚本到 assets
-          if [ -f "mobile-fix.js" ]; then
-            mkdir -p app/src/main/assets/rp-hub-web/assets/js
-            cp mobile-fix.js "$JS_FILE"
-            echo "JS 修复脚本已复制"
-          fi
-
-          # 3. 追加 CSS 优化
-          if [ -f "mobile-patch.css" ] && [ -f "$CSS_FILE" ]; then
-            cat mobile-patch.css >> "$CSS_FILE"
-            echo "CSS 补丁已注入 ($(wc -l < mobile-patch.css) 行)"
-          fi
-
-      - name: 安装 Gradle 8.2
+      - name: 安装 Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
@@ -191,62 +40,21 @@ jobs:
 
       - name: 构建 Release APK
         run: |
-          echo ">>> 开始构建..."
           gradle assembleRelease --no-daemon
-
-          echo ""
-          echo ">>> 构建产物:"
           ls -lh app/build/outputs/apk/release/
 
       - name: 准备发布信息
         id: release_info
         run: |
-          UPSTREAM_SHA="${{ needs.check-upstream.outputs.upstream_sha }}"
-          SHORT_SHA="${UPSTREAM_SHA:0:7}"
-          COMMIT_MSG="${{ needs.check-upstream.outputs.commit_msg }}"
           DATE=$(date +%Y%m%d-%H%M)
           TAG="v${DATE}"
-          VERSION="1.0.0-${DATE}"
-
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "name=RP-Hub Android ${VERSION}" >> $GITHUB_OUTPUT
+          echo "name=RP-Hub Android ${TAG}" >> $GITHUB_OUTPUT
 
-          cat > /tmp/changelog.md << EOF
-          ## RP-Hub Android ${VERSION}
-
-          **自动构建** · $(date '+%Y-%m-%d %H:%M UTC')
-
-          ### 上游信息
-          - 提交: \`${SHORT_SHA}\`
-          - 信息: ${COMMIT_MSG}
-          - 仓库: https://github.com/${{ env.UPSTREAM_REPO }}
-
-          ### 移动端优化（CI 注入）
-          - 安全区域适配（刘海屏/打孔屏）
-          - 触摸反馈 + 最小触摸尺寸
-          - 输入框字体 16px 防缩放
-          - 模态框全屏化
-          - 代码块自动换行
-          - 禁止双击缩放
-          - 入场动画加速
-
-          ### 安装说明
-          1. 下载下方 APK
-          2. 安卓设置 → 允许安装未知来源应用
-          3. 安装 APK（可覆盖旧版本，签名已固定）
-          4. 打开 APP，在设置中配置你的 API 即可
-
-          > RP-Hub 原项目遵循 CC BY-NC 4.0 协议
-          EOF
-
-      - name: 删除旧 Release（保留最近 5 个）
+      - name: 清理旧 Release
         run: |
-          echo ">>> 清理旧 Release..."
           OLD_RELEASES=$(gh release list --limit 100 | tail -n +6 | awk '{print $1}')
-
           for tag in $OLD_RELEASES; do
-            echo "  删除: $tag"
             gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
           done
 
@@ -256,12 +64,8 @@ jobs:
         run: |
           TAG="${{ steps.release_info.outputs.tag }}"
           NAME="${{ steps.release_info.outputs.name }}"
-
           gh release create "$TAG" \
             app/build/outputs/apk/release/app-release.apk \
             --title "$NAME" \
-            --notes-file /tmp/changelog.md \
+            --notes "RP-Hub Android 移动端适配版 ${TAG}" \
             --prerelease=false
-
-          echo ""
-          echo ">>> 发布成功: $TAG"

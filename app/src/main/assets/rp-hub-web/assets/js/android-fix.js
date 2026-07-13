@@ -1,9 +1,11 @@
 /**
- * RP-Hub Android 全屏 API 修复 + 安卓优化
- * 通过 evaluateJavascript 注入（不修改 HTML）
+ * RP-Hub Android 适配脚本
+ * 在 app.js 之前加载
  */
 (function() {
     // Fullscreen API polyfill
+    // Android WebView 不支持 JS Fullscreen API
+    // RP-Hub 的 CSS 已有 .app-native-fullscreen 类
     try {
         if (!document.fullscreenEnabled && !document.webkitFullscreenEnabled) {
             var _fs = null;
