@@ -29,7 +29,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 10
+        private const val CURRENT_ASSET_VERSION = 11
         private const val FILE_CHOOSER_REQUEST = 1001
     }
 
