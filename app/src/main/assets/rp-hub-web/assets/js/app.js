@@ -430,28 +430,25 @@ createApp({
                 return;
             }
 
-            const viewport = window.visualViewport;
-            const height = viewport?.height || window.innerHeight || document.documentElement.clientHeight;
-            const layoutHeight = window.innerHeight || document.documentElement.clientHeight || height;
-            const viewportOffsetTop = viewport?.offsetTop || 0;
-            const visualHeightForLayout = viewport ? height + viewportOffsetTop : height;
+            // Android WebView 适配：不用 visualViewport.height（可能不包含状态栏区域）
+            // 直接用 window.innerHeight 作为高度，避免状态栏高度被误判为键盘高度
+            const height = window.innerHeight || document.documentElement.clientHeight;
+            const layoutHeight = height;
+            const viewportOffsetTop = 0;
+            const visualHeightForLayout = height;
             const inputFocused = document.activeElement === inputBox.value;
-            const keyboardInset = viewport
-                ? Math.max(0, layoutHeight - height - viewportOffsetTop)
-                : 0;
-            const viewportCompressed = viewport && height < layoutHeight - 80;
-            const keyboardOpen = !!(viewportCompressed || keyboardInset > 40);
-            const keyboardInsetForLayout = keyboardOpen ? keyboardInset : 0;
-            const appHeightForLayout = keyboardInsetForLayout > 0 ? layoutHeight : visualHeightForLayout;
-            const freezeBackground = inputFocused || keyboardOpen || isMobileKeyboardOpen.value;
-            const backgroundHeight = freezeBackground
-                ? Math.max(lastAppliedMobileBackgroundHeight, lastAppliedMobileViewportHeight, appHeightForLayout)
-                : Math.max(layoutHeight, visualHeightForLayout);
+            const keyboardInset = 0;
+            const viewportCompressed = false;
+            const keyboardOpen = false;
+            const keyboardInsetForLayout = 0;
+            const appHeightForLayout = height;
+            const freezeBackground = inputFocused || isMobileKeyboardOpen.value;
+            const backgroundHeight = height;
 
             applyMobileVisualViewportHeight(appHeightForLayout, { force });
             applyMobileKeyboardInset(keyboardInsetForLayout, { force });
             applyMobileBackgroundHeight(backgroundHeight, { force });
-            isMobileKeyboardOpen.value = !!(inputFocused || keyboardOpen);
+            isMobileKeyboardOpen.value = !!inputFocused;
 
         };
 

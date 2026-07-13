@@ -29,7 +29,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 14
+        private const val CURRENT_ASSET_VERSION = 15
         private const val FILE_CHOOSER_REQUEST = 1001
     }
 
@@ -142,6 +142,12 @@ class MainActivity : Activity() {
     }
 
     private fun applyImmersiveMode() {
+        // 用 FLAG_FULLSCREEN 彻底移除状态栏区域，让 innerHeight = 屏幕高度
+        @Suppress("DEPRECATION")
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        @Suppress("DEPRECATION")
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)
             window.insetsController?.let { controller ->
