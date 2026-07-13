@@ -143,36 +143,26 @@ jobs:
           INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
           CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
 
-          # 1. 注入 JS 修复脚本 + viewport + theme-color
-          if [ -f "mobile-fix.js" ] && [ -f "$INDEX_FILE" ]; then
+          # 1. 修改 viewport + theme-color（不注入 JS）
+          if [ -f "$INDEX_FILE" ]; then
             python3 << 'PYEOF'
           import re
 
           with open("app/src/main/assets/rp-hub-web/index.html", "r", encoding="utf-8") as f:
               html = f.read()
 
-          # 读取修复脚本
-          with open("mobile-fix.js", "r", encoding="utf-8") as f:
-              fix_script = f.read()
-
-          # 在 </head> 前注入修复脚本
-          inject = "<script>" + fix_script + "</script>"
-          html = html.replace("</head>", inject + "\n</head>", 1)
-
           # 替换 viewport meta（加 viewport-fit=cover）
           new_viewport = '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">'
           html = re.sub(r'<meta name="viewport"[^>]*>', new_viewport, html)
 
-          # 添加 theme-color meta（状态栏颜色）
+          # 添加 theme-color meta
           if "theme-color" not in html:
               html = html.replace("</head>", '<meta name="theme-color" content="#f9fafb">\n</head>', 1)
 
           with open("app/src/main/assets/rp-hub-web/index.html", "w", encoding="utf-8") as f:
               f.write(html)
-          print("JS + viewport + theme-color 已注入")
+          print("viewport + theme-color 已注入")
           PYEOF
-          else
-            echo "修复脚本或 index.html 未找到"
           fi
 
           # 2. 追加 CSS 优化
