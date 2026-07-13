@@ -29,7 +29,7 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 9
+        private const val CURRENT_ASSET_VERSION = 10
         private const val FILE_CHOOSER_REQUEST = 1001
     }
 
@@ -108,7 +108,7 @@ class MainActivity : Activity() {
             }
         }
 
-        // ★ WebChromeClient：处理文件选择、alert/confirm 等
+        // ★ WebChromeClient：只处理文件选择，JS 对话框用系统默认
         webView.webChromeClient = object : WebChromeClient() {
 
             // 文件选择（<input type="file">）
@@ -132,27 +132,7 @@ class MainActivity : Activity() {
                 return true
             }
 
-            // JS alert
-            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
-                result?.confirm()
-                return true
-            }
-
-            // JS confirm
-            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
-                result?.confirm()
-                return true
-            }
-
-            // JS prompt
-            override fun onJsPrompt(
-                view: WebView?, url: String?, message: String?, defaultValue: String?, result: android.webkit.JsPromptResult?
-            ): Boolean {
-                result?.confirm(defaultValue)
-                return true
-            }
-
-            // 控制台日志
+            // 控制台日志转发到 Logcat
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 Log.d(TAG, "JS: ${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})")
                 return true
