@@ -1,12 +1,9 @@
 /**
- * RP-Hub Android 修复脚本（最小化版本）
- * 只保留最安全的修复，避免任何可能导致崩溃的操作
+ * RP-Hub Android 全屏 API 修复 + 安卓优化
+ * 通过 evaluateJavascript 注入（不修改 HTML）
  */
 (function() {
-
     // Fullscreen API polyfill
-    // Android WebView 不支持 JS Fullscreen API
-    // RP-Hub 的 CSS 已有 .app-native-fullscreen 类
     try {
         if (!document.fullscreenEnabled && !document.webkitFullscreenEnabled) {
             var _fs = null;
@@ -19,6 +16,7 @@
                     _fs = el;
                     setTimeout(function() {
                         document.dispatchEvent(new Event('fullscreenchange'));
+                        document.dispatchEvent(new Event('webkitfullscreenchange'));
                     }, 0);
                     resolve();
                 });
@@ -32,6 +30,7 @@
                     if (_fs) { _fs.classList.remove('app-native-fullscreen'); _fs = null; }
                     setTimeout(function() {
                         document.dispatchEvent(new Event('fullscreenchange'));
+                        document.dispatchEvent(new Event('webkitfullscreenchange'));
                     }, 0);
                     resolve();
                 });
@@ -40,7 +39,7 @@
                 document.webkitExitFullscreen = document.exitFullscreen;
             }
         }
-    } catch(e) {}
+    } catch(e) { console.warn('Fullscreen polyfill error:', e); }
 
     // 禁止双击缩放
     try {
@@ -50,5 +49,25 @@
             if (n - lt < 300) e.preventDefault();
             lt = n;
         }, { passive: false });
+    } catch(e) {}
+
+    // 按钮震动反馈
+    try {
+        document.addEventListener('click', function(e) {
+            var t = e.target.closest('button');
+            if (t && navigator.vibrate) navigator.vibrate(8);
+        }, true);
+    } catch(e) {}
+
+    // 屏幕常亮
+    try {
+        var wl = null;
+        if (navigator.wakeLock) {
+            navigator.wakeLock.request('screen').then(function(w) { wl = w; }).catch(function() {});
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) { if (wl) { try { wl.release(); } catch(e){} wl = null; } }
+                else { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function(w) { wl = w; }).catch(function() {}); }
+            });
+        }
     } catch(e) {}
 })();

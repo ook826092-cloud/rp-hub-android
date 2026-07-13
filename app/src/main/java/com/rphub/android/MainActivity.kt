@@ -29,12 +29,14 @@ class MainActivity : Activity() {
         private const val RP_HUB_ASSET_DIR = "rp-hub-web"
         private const val PREF_NAME = "rphub_prefs"
         private const val KEY_ASSET_VERSION = "asset_version"
-        private const val CURRENT_ASSET_VERSION = 12
+        private const val CURRENT_ASSET_VERSION = 13
+        private const val FILE_CHOOSER_REQUEST = 1001
     }
 
     private lateinit var webView: WebView
     private lateinit var webRoot: File
     private var localServer: LocalWebServer? = null
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,15 +44,12 @@ class MainActivity : Activity() {
 
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        // 背景
         window.decorView.setBackgroundColor(Color.parseColor("#F9FAFB"))
 
-        // WebView
         webView = WebView(this)
         webView.setBackgroundColor(Color.parseColor("#F9FAFB"))
         setContentView(webView)
 
-        // 沉浸式：在 setContentView 之后调用
         applyImmersiveMode()
 
         val settings = webView.settings
@@ -91,7 +90,53 @@ class MainActivity : Activity() {
             }
         }
 
-        webView.webChromeClient = WebChromeClient()
+        // ★ WebChromeClient：文件选择 + 控制台日志（不碰 JS 对话框）
+        webView.webChromeClient = object : WebChromeClient() {
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                callback: ValueCallback<Array<Uri>>?,
+                params: FileChooserParams?
+            ): Boolean {
+                filePathCallback?.onReceiveValue(null)
+                filePathCallback = callback
+                try {
+                    val intent = params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(Intent.createChooser(intent, "选择文件"), FILE_CHOOSER_REQUEST)
+                } catch (e: Exception) {
+                    filePathCallback = null
+                    return false
+                }
+                return true
+            }
+
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                Log.d(TAG, "JS: ${consoleMessage?.message()}")
+                return true
+            }
+
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                callback?.invoke(origin, true, false)
+            }
+        }
+
+        // 下载支持
+        webView.setDownloadListener { url, _, _, _, _ ->
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法下载文件", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         prepareAndLoad()
     }
@@ -121,6 +166,21 @@ class MainActivity : Activity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) applyImmersiveMode()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FILE_CHOOSER_REQUEST) {
+            val callback = filePathCallback
+            filePathCallback = null
+            if (callback != null) {
+                val result = if (resultCode == RESULT_OK) {
+                    data?.data?.let { arrayOf(it) }
+                } else null
+                callback.onReceiveValue(result)
+            }
+        }
     }
 
     private fun prepareAndLoad() {

@@ -142,8 +142,9 @@ jobs:
 
           INDEX_FILE="app/src/main/assets/rp-hub-web/index.html"
           CSS_FILE="app/src/main/assets/rp-hub-web/assets/css/styles.css"
+          JS_FILE="app/src/main/assets/rp-hub-web/assets/js/mobile-fix.js"
 
-          # 1. 修改 viewport + theme-color（不注入 JS）
+          # 1. 修改 viewport + theme-color + 注入 JS
           if [ -f "$INDEX_FILE" ]; then
             python3 << 'PYEOF'
           import re
@@ -159,13 +160,24 @@ jobs:
           if "theme-color" not in html:
               html = html.replace("</head>", '<meta name="theme-color" content="#f9fafb">\n</head>', 1)
 
+          # 注入 mobile-fix.js（在 app.js 之前加载）
+          if 'mobile-fix.js' not in html:
+              html = html.replace('</head>', '<script src="assets/js/mobile-fix.js"></script>\n</head>', 1)
+
           with open("app/src/main/assets/rp-hub-web/index.html", "w", encoding="utf-8") as f:
               f.write(html)
-          print("viewport + theme-color 已注入")
+          print("viewport + theme-color + JS 已注入")
           PYEOF
           fi
 
-          # 2. 追加 CSS 优化
+          # 2. 复制 JS 修复脚本到 assets
+          if [ -f "mobile-fix.js" ]; then
+            mkdir -p app/src/main/assets/rp-hub-web/assets/js
+            cp mobile-fix.js "$JS_FILE"
+            echo "JS 修复脚本已复制"
+          fi
+
+          # 3. 追加 CSS 优化
           if [ -f "mobile-patch.css" ] && [ -f "$CSS_FILE" ]; then
             cat mobile-patch.css >> "$CSS_FILE"
             echo "CSS 补丁已注入 ($(wc -l < mobile-patch.css) 行)"
